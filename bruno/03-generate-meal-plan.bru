@@ -1,0 +1,33 @@
+meta {
+  name: Générer un plan de repas
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:8001/api/meal-plan/generate
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "user_id": 1,
+    "user_profile": {
+      "objective": "weight_loss",
+      "gender": "female",
+      "age": 28,
+      "weight_kg": 65,
+      "height_cm": 168,
+      "diet": "none",
+      "allergies": [],
+      "budget": "medium"
+    },
+    "days": 7,
+    "meals_per_day": 3
+  }
+}
