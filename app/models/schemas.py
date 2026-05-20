@@ -13,7 +13,11 @@ class ObjectiveEnum(str, Enum):
 class DietEnum(str, Enum):
     vegan = "vegan"
     vegetarian = "vegetarian"
+    pescatarian = "pescatarian"
     gluten_free = "gluten_free"
+    lactose_free = "lactose_free"
+    halal = "halal"
+    kosher = "kosher"
     none = "none"
 
 
@@ -50,8 +54,6 @@ class MealAnalysisResponse(BaseModel):
 
 
 class MealPlanRequest(BaseModel):
-    user_id: int  # ID de l'utilisateur dans PostgreSQL
-    user_profile: UserProfile
     days: int = 7
     meals_per_day: int = 3
 
