@@ -1,0 +1,687 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "HealthAI - Service de Recommandation Nutritionnelle",
+        "description": "\n## Service de recommandation nutritionnelle \u00e2\u20ac\u201d HealthAI Coach\n\nMicro-service FastAPI exposant deux fonctionnalit\u00c3\u00a9s principales :\n\n### Analyse de repas (`/api/nutrition/analyze`)\n- D\u00c3\u00a9tection des aliments via le mod\u00c3\u00a8le de vision **nateraw/food** (ViT, Food-101)\n- Calcul des macronutriments via l'API **USDA FoodData Central**\n- D\u00c3\u00a9tection des d\u00c3\u00a9s\u00c3\u00a9quilibres nutritionnels via un mod\u00c3\u00a8le **Random Forest** (scikit-learn)\n- G\u00c3\u00a9n\u00c3\u00a9ration de recommandations textuelles personnalis\u00c3\u00a9es selon l'objectif et le r\u00c3\u00a9gime de l'utilisateur\n\n### Plan de repas (`/api/meal-plan/generate`)\n- G\u00c3\u00a9n\u00c3\u00a9ration d'un plan sur 1 \u00c3\u00a0 7 jours\n- Filtrage automatique des allerg\u00c3\u00a8nes et respect du r\u00c3\u00a9gime alimentaire\n- Persistance de l'historique en **MongoDB**\n\n### Authentification\nToutes les routes n\u00c3\u00a9cessitent un token JWT Bearer g\u00c3\u00a9n\u00c3\u00a9r\u00c3\u00a9 par l'API principale (Express).\n",
+        "contact": {
+            "name": "HealthAI Coach"
+        },
+        "license": {
+            "name": "Projet p\u00c3\u00a9dagogique EPSI \u00e2\u20ac\u201d MSPR TPRE502"
+        },
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/nutrition/analyze": {
+            "post": {
+                "tags": [
+                    "Analyse Nutritionnelle"
+                ],
+                "summary": "Analyze Meal",
+                "description": "Analyse une photo de repas pour l'utilisateur connect\u00c3\u00a9.\nSon profil sant\u00c3\u00a9 et ses allergies sont r\u00c3\u00a9cup\u00c3\u00a9r\u00c3\u00a9s automatiquement depuis PostgreSQL.\nRetourne les aliments d\u00c3\u00a9tect\u00c3\u00a9s, les valeurs nutritionnelles et les recommandations personnalis\u00c3\u00a9es.",
+                "operationId": "analyze_meal_api_nutrition_analyze_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_analyze_meal_api_nutrition_analyze_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MealAnalysisResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/meal-plan/generate": {
+            "post": {
+                "tags": [
+                    "Plans de Repas"
+                ],
+                "summary": "Generate Meal Plan",
+                "description": "G\u00c3\u00a9n\u00c3\u00a8re un plan de repas pour l'utilisateur connect\u00c3\u00a9.\nSon profil sant\u00c3\u00a9, r\u00c3\u00a9gime et allergies sont r\u00c3\u00a9cup\u00c3\u00a9r\u00c3\u00a9s automatiquement depuis PostgreSQL.",
+                "operationId": "generate_meal_plan_api_meal_plan_generate_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MealPlanRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MealPlanResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/meal-plan/history": {
+            "get": {
+                "tags": [
+                    "Plans de Repas"
+                ],
+                "summary": "Get History",
+                "description": "Historique global de tous les plans g\u00c3\u00a9n\u00c3\u00a9r\u00c3\u00a9s. R\u00c3\u00a9serv\u00c3\u00a9 aux admins.",
+                "operationId": "get_history_api_meal_plan_history_get",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/meal-plan/user/{user_id}": {
+            "get": {
+                "tags": [
+                    "Plans de Repas"
+                ],
+                "summary": "Get User Plans",
+                "description": "Retourne les plans de repas d'un utilisateur.\nUn utilisateur ne peut consulter que ses propres plans.",
+                "operationId": "get_user_plans_api_meal_plan_user__user_id__get",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "summary": "Health Check",
+                "operationId": "health_check_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/": {
+            "get": {
+                "summary": "Root",
+                "operationId": "root__get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Body_analyze_meal_api_nutrition_analyze_post": {
+                "properties": {
+                    "image": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "Image",
+                        "description": "Photo du repas (jpg, png, webp)"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "image"
+                ],
+                "title": "Body_analyze_meal_api_nutrition_analyze_post"
+            },
+            "DayPlan": {
+                "properties": {
+                    "day": {
+                        "type": "integer",
+                        "title": "Day"
+                    },
+                    "meals": {
+                        "items": {
+                            "$ref": "#/components/schemas/Meal"
+                        },
+                        "type": "array",
+                        "title": "Meals"
+                    },
+                    "total_calories": {
+                        "type": "number",
+                        "title": "Total Calories"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "day",
+                    "meals",
+                    "total_calories"
+                ],
+                "title": "DayPlan"
+            },
+            "DietEnum": {
+                "type": "string",
+                "enum": [
+                    "vegan",
+                    "vegetarian",
+                    "pescatarian",
+                    "gluten_free",
+                    "lactose_free",
+                    "halal",
+                    "kosher",
+                    "none"
+                ],
+                "title": "DietEnum"
+            },
+            "FoodItem": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "title": "Confidence"
+                    },
+                    "portion_g": {
+                        "type": "number",
+                        "title": "Portion G",
+                        "default": 100.0
+                    },
+                    "calories": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Calories"
+                    },
+                    "protein_g": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Protein G"
+                    },
+                    "carbs_g": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Carbs G"
+                    },
+                    "fat_g": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat G"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "confidence"
+                ],
+                "title": "FoodItem"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "Meal": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Type"
+                    },
+                    "foods": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Foods"
+                    },
+                    "estimated_calories": {
+                        "type": "number",
+                        "title": "Estimated Calories"
+                    },
+                    "prep_time_min": {
+                        "type": "integer",
+                        "title": "Prep Time Min"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "type",
+                    "foods",
+                    "estimated_calories",
+                    "prep_time_min"
+                ],
+                "title": "Meal"
+            },
+            "MealAnalysisResponse": {
+                "properties": {
+                    "detected_foods": {
+                        "items": {
+                            "$ref": "#/components/schemas/FoodItem"
+                        },
+                        "type": "array",
+                        "title": "Detected Foods"
+                    },
+                    "total_calories": {
+                        "type": "number",
+                        "title": "Total Calories"
+                    },
+                    "target_calories": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Target Calories"
+                    },
+                    "total_protein_g": {
+                        "type": "number",
+                        "title": "Total Protein G"
+                    },
+                    "total_carbs_g": {
+                        "type": "number",
+                        "title": "Total Carbs G"
+                    },
+                    "total_fat_g": {
+                        "type": "number",
+                        "title": "Total Fat G"
+                    },
+                    "imbalances": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Imbalances"
+                    },
+                    "suggestions": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Suggestions"
+                    },
+                    "macros_ratios": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Macros Ratios"
+                    },
+                    "ml_label": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ml Label"
+                    },
+                    "ml_confidence": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ml Confidence"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "detected_foods",
+                    "total_calories",
+                    "total_protein_g",
+                    "total_carbs_g",
+                    "total_fat_g",
+                    "imbalances",
+                    "suggestions",
+                    "macros_ratios"
+                ],
+                "title": "MealAnalysisResponse"
+            },
+            "MealPlanRequest": {
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "title": "Days",
+                        "default": 7
+                    },
+                    "meals_per_day": {
+                        "type": "integer",
+                        "title": "Meals Per Day",
+                        "default": 3
+                    }
+                },
+                "type": "object",
+                "title": "MealPlanRequest"
+            },
+            "MealPlanResponse": {
+                "properties": {
+                    "user_id": {
+                        "type": "integer",
+                        "title": "User Id"
+                    },
+                    "user_profile": {
+                        "$ref": "#/components/schemas/UserProfile"
+                    },
+                    "plan": {
+                        "items": {
+                            "$ref": "#/components/schemas/DayPlan"
+                        },
+                        "type": "array",
+                        "title": "Plan"
+                    },
+                    "weekly_notes": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Weekly Notes"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "user_id",
+                    "user_profile",
+                    "plan",
+                    "weekly_notes"
+                ],
+                "title": "MealPlanResponse"
+            },
+            "ObjectiveEnum": {
+                "type": "string",
+                "enum": [
+                    "weight_loss",
+                    "muscle_gain",
+                    "endurance",
+                    "maintenance"
+                ],
+                "title": "ObjectiveEnum"
+            },
+            "UserProfile": {
+                "properties": {
+                    "objective": {
+                        "$ref": "#/components/schemas/ObjectiveEnum",
+                        "default": "maintenance"
+                    },
+                    "gender": {
+                        "type": "string",
+                        "title": "Gender",
+                        "default": "male"
+                    },
+                    "age": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Age"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg"
+                    },
+                    "height_cm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Height Cm"
+                    },
+                    "diet": {
+                        "$ref": "#/components/schemas/DietEnum",
+                        "default": "none"
+                    },
+                    "allergies": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Allergies",
+                        "default": []
+                    },
+                    "budget": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Budget"
+                    }
+                },
+                "type": "object",
+                "title": "UserProfile"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        },
+        "securitySchemes": {
+            "HTTPBearer": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        }
+    }
+}
