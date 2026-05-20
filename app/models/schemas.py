@@ -45,6 +45,7 @@ class FoodItem(BaseModel):
 class MealAnalysisResponse(BaseModel):
     detected_foods: list[FoodItem]
     total_calories: float
+    target_calories: Optional[float] = None
     total_protein_g: float
     total_carbs_g: float
     total_fat_g: float

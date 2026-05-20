@@ -77,6 +77,7 @@ async def analyze_meal(
     return MealAnalysisResponse(
         detected_foods=food_items,
         total_calories=round(total_calories, 1),
+        target_calories=balance["target_calories"],
         total_protein_g=round(total_protein, 1),
         total_carbs_g=round(total_carbs, 1),
         total_fat_g=round(total_fat, 1),
