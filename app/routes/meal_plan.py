@@ -85,6 +85,26 @@ _MEALS = {
     },
 }
 
+# Mots-clés par allergène — mappés sur les ingrédients des templates
+_ALLERGEN_KEYWORDS: dict[str, list[str]] = {
+    "gluten":   ["pain", "pâtes", "tortilla", "flocons d'avoine", "granola", "avoine", "semoule", "blé"],
+    "milk":     ["yaourt", "lait", "fromage", "beurre", "crème", "whey", "parmesan", "feta", "cottage cheese", "fromage blanc"],
+    "eggs":     ["œufs", "œuf"],
+    "nuts":     ["noix", "amandes", "noisettes", "beurre d'amande", "cajou", "pistaches"],
+    "peanuts":  ["cacahuète", "beurre de cacahuète", "arachide"],
+    "fish":     ["saumon", "thon", "cabillaud", "poisson"],
+}
+
+
+def _meal_contains_allergen(meal: dict, allergies: list[str]) -> bool:
+    foods_text = " ".join(meal.get("foods", [])).lower() + " " + meal.get("name", "").lower()
+    for allergy in allergies:
+        for keyword in _ALLERGEN_KEYWORDS.get(allergy.lower(), [allergy.lower()]):
+            if keyword in foods_text:
+                return True
+    return False
+
+
 # Suggestions hebdomadaires selon le régime
 _WEEKLY_NOTES = {
     DietEnum.vegan: [
@@ -148,7 +168,9 @@ async def generate_meal_plan(
             options = template.get(meal_type, [])
             if not options:
                 continue
-            selected = options[(day_num - 1) % len(options)]
+            safe_options = [m for m in options if not _meal_contains_allergen(m, user_profile.allergies)]
+            pool = safe_options if safe_options else options
+            selected = pool[(day_num - 1) % len(pool)]
             meal = Meal(
                 name=selected["name"],
                 type=meal_type,
@@ -164,7 +186,11 @@ async def generate_meal_plan(
     save_meal_plan(current_user["id"], user_profile.model_dump(), [d.model_dump() for d in plan])
 
     diet_notes = _WEEKLY_NOTES.get(user_profile.diet, [])
-    weekly_notes = _GENERAL_NOTES + diet_notes
+    allergy_notes = (
+        [f"Allergies détectées ({', '.join(user_profile.allergies)}) : les repas contenant ces allergènes ont été exclus du plan."]
+        if user_profile.allergies else []
+    )
+    weekly_notes = _GENERAL_NOTES + diet_notes + allergy_notes
 
     return MealPlanResponse(
         user_id=current_user["id"],
