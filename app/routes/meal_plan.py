@@ -105,6 +105,43 @@ def _meal_contains_allergen(meal: dict, allergies: list[str]) -> bool:
     return False
 
 
+# Ingrédients exclus par régime alimentaire
+_DIET_EXCLUDED_KEYWORDS: dict[str, list[str]] = {
+    "vegan": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+        "saumon", "thon", "cabillaud", "poisson", "saumon fumé",
+        "yaourt", "lait", "fromage", "beurre", "crème", "whey",
+        "parmesan", "feta", "cottage cheese", "fromage blanc",
+        "œufs", "œuf",
+    ],
+    "vegetarian": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+        "saumon", "thon", "cabillaud", "poisson", "saumon fumé",
+    ],
+    "pescatarian": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+    ],
+    "gluten_free": [
+        "pain", "pâtes", "tortilla", "flocons d'avoine", "granola", "semoule",
+    ],
+    "lactose_free": [
+        "yaourt", "lait", "fromage", "beurre", "crème", "whey",
+        "parmesan", "feta", "cottage cheese", "fromage blanc",
+    ],
+    "halal":  ["porc", "jambon", "bacon", "lard"],
+    "kosher": ["porc", "jambon", "bacon", "lard"],
+    "none":   [],
+}
+
+
+def _is_meal_compatible(meal: dict, diet: str) -> bool:
+    excluded = _DIET_EXCLUDED_KEYWORDS.get(diet, [])
+    if not excluded:
+        return True
+    foods_text = " ".join(meal.get("foods", [])).lower() + " " + meal.get("name", "").lower()
+    return not any(kw in foods_text for kw in excluded)
+
+
 # Suggestions hebdomadaires selon le régime
 _WEEKLY_NOTES = {
     DietEnum.vegan: [
@@ -119,6 +156,22 @@ _WEEKLY_NOTES = {
     DietEnum.gluten_free: [
         "Remplacer le blé par du riz, quinoa, sarrasin ou millet.",
         "Vérifier systématiquement les étiquettes : certains produits contiennent du gluten caché.",
+    ],
+    DietEnum.pescatarian: [
+        "Varier les poissons : saumon, maquereau, sardines pour les oméga-3, cabillaud pour les protéines maigres.",
+        "Les fruits de mer sont une excellente source de zinc et d'iode.",
+    ],
+    DietEnum.lactose_free: [
+        "Remplacer les produits laitiers par des alternatives végétales enrichies en calcium (lait d'amande, soja, avoine).",
+        "Le calcium peut aussi être apporté par les légumes verts, les sardines et les amandes.",
+    ],
+    DietEnum.halal: [
+        "Vérifier que les viandes consommées sont certifiées halal.",
+        "Les protéines végétales (légumineuses, tofu) sont une alternative pratique en déplacement.",
+    ],
+    DietEnum.kosher: [
+        "Ne pas mélanger viande et produits laitiers dans le même repas.",
+        "Prévoir un délai entre un repas carné et un repas lacté.",
     ],
     DietEnum.none: [],
 }
@@ -168,7 +221,11 @@ async def generate_meal_plan(
             options = template.get(meal_type, [])
             if not options:
                 continue
-            safe_options = [m for m in options if not _meal_contains_allergen(m, user_profile.allergies)]
+            safe_options = [
+                m for m in options
+                if not _meal_contains_allergen(m, user_profile.allergies)
+                and _is_meal_compatible(m, user_profile.diet.value)
+            ]
             pool = safe_options if safe_options else options
             selected = pool[(day_num - 1) % len(pool)]
             meal = Meal(
