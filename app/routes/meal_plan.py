@@ -1,6 +1,8 @@
-from fastapi import APIRouter
-from app.models.schemas import MealPlanRequest, MealPlanResponse, DayPlan, Meal, ObjectiveEnum, DietEnum
+from fastapi import APIRouter, Depends, HTTPException
+from app.models.schemas import MealPlanRequest, MealPlanResponse, DayPlan, Meal, UserProfile, ObjectiveEnum, DietEnum
 from app.db.mongo import save_meal_plan, get_meal_plan_history, get_meal_plans_by_user
+from app.db.postgres import get_user_full_profile
+from app.middleware.auth import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -109,15 +111,29 @@ _GENERAL_NOTES = [
 
 
 @router.post("/generate", response_model=MealPlanResponse)
-async def generate_meal_plan(request: MealPlanRequest):
+async def generate_meal_plan(
+    request: MealPlanRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Génère un plan de repas personnalisé selon :
-    - L'objectif de l'utilisateur (perte de poids, prise de masse, endurance, maintien)
-    - Le régime alimentaire (vegan, végétarien, sans gluten)
-    - Le nombre de jours et de repas par jour
+    Génère un plan de repas pour l'utilisateur connecté.
+    Son profil santé, régime et allergies sont récupérés automatiquement depuis PostgreSQL.
     """
-    template = _MEALS.get(request.user_profile.objective, _MEALS[ObjectiveEnum.maintenance])
+    profile_data = get_user_full_profile(current_user["id"])
+    if not profile_data:
+        raise HTTPException(status_code=404, detail="Profil utilisateur introuvable en base de données.")
 
+    user_profile = UserProfile(
+        objective=profile_data["objective"],
+        gender=profile_data["gender"],
+        age=profile_data["age"],
+        weight_kg=profile_data["weight_kg"],
+        height_cm=profile_data["height_cm"],
+        diet=profile_data["diet"],
+        allergies=profile_data["allergies"],
+    )
+
+    template = _MEALS.get(user_profile.objective, _MEALS[ObjectiveEnum.maintenance])
     plan: list[DayPlan] = []
 
     for day_num in range(1, request.days + 1):
@@ -132,9 +148,7 @@ async def generate_meal_plan(request: MealPlanRequest):
             options = template.get(meal_type, [])
             if not options:
                 continue
-            # Rotation cyclique pour varier les repas d'un jour à l'autre
             selected = options[(day_num - 1) % len(options)]
-
             meal = Meal(
                 name=selected["name"],
                 type=meal_type,
@@ -147,27 +161,38 @@ async def generate_meal_plan(request: MealPlanRequest):
 
         plan.append(DayPlan(day=day_num, meals=meals, total_calories=total_cal))
 
-    # Sauvegarde dans MongoDB avec référence à l'utilisateur PostgreSQL
-    save_meal_plan(request.user_id, request.user_profile.model_dump(), [d.model_dump() for d in plan])
+    save_meal_plan(current_user["id"], user_profile.model_dump(), [d.model_dump() for d in plan])
 
-    diet_notes = _WEEKLY_NOTES.get(request.user_profile.diet, [])
+    diet_notes = _WEEKLY_NOTES.get(user_profile.diet, [])
     weekly_notes = _GENERAL_NOTES + diet_notes
 
     return MealPlanResponse(
-        user_id=request.user_id,
-        user_profile=request.user_profile,
+        user_id=current_user["id"],
+        user_profile=user_profile,
         plan=plan,
         weekly_notes=weekly_notes,
     )
 
 
 @router.get("/history")
-async def get_history(limit: int = 10):
-    """Récupère l'historique global des plans générés (tous utilisateurs)."""
+async def get_history(
+    limit: int = 10,
+    _: dict = Depends(require_admin),
+):
+    """Historique global de tous les plans générés. Réservé aux admins."""
     return get_meal_plan_history(limit=limit)
 
 
 @router.get("/user/{user_id}")
-async def get_user_plans(user_id: int, limit: int = 10):
-    """Récupère les plans de repas d'un utilisateur spécifique via son ID PostgreSQL."""
+async def get_user_plans(
+    user_id: int,
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retourne les plans de repas d'un utilisateur.
+    Un utilisateur ne peut consulter que ses propres plans.
+    """
+    if current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Accès refusé : vous ne pouvez consulter que vos propres plans.")
     return get_meal_plans_by_user(user_id=user_id, limit=limit)
