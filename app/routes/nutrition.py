@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from app.models.schemas import MealAnalysisResponse, FoodItem, UserProfile
-from app.services import vision, nutrition_calc, recommender
+from app.services import vision, nutrition_calc, recommender, ml_recommender
 from app.middleware.auth import get_current_user
 from app.db.postgres import get_user_full_profile
 
@@ -69,10 +69,18 @@ async def analyze_meal(
         else:
             food_items.append(FoodItem(name=item["food"], confidence=item["confidence"]))
 
-    # 3. Analyse des déséquilibres personnalisée selon le profil réel
+    # 3. Analyse des déséquilibres — règles métier (recommender) + ML
     balance = recommender.analyze_nutritional_balance(
         total_calories, total_protein, total_carbs, total_fat, user_profile
     )
+
+    ml_result = ml_recommender.predict_and_recommend(
+        total_calories, total_protein, total_carbs, total_fat, user_profile
+    )
+
+    # La recommandation ML remplace les suggestions règles si le label est cohérent,
+    # sinon on fusionne : suggestions règles + recommendation ML en tête de liste
+    suggestions = [ml_result["recommendation"]] + balance["suggestions"]
 
     return MealAnalysisResponse(
         detected_foods=food_items,
@@ -82,6 +90,8 @@ async def analyze_meal(
         total_carbs_g=round(total_carbs, 1),
         total_fat_g=round(total_fat, 1),
         imbalances=balance["imbalances"],
-        suggestions=balance["suggestions"],
+        suggestions=suggestions,
         macros_ratios=balance["macros_ratios"],
+        ml_label=ml_result["label"],
+        ml_confidence=ml_result["confidence"],
     )

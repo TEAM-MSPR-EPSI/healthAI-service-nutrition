@@ -51,7 +51,7 @@ def get_user_full_profile(user_id: int) -> dict | None:
                            user_health_profile_food_diet
                     FROM user_health_profile
                     WHERE user_id = :uid
-                    ORDER BY users_health_profile_id DESC
+                    ORDER BY user_health_profile_id DESC
                     LIMIT 1
                 """),
                 {"uid": uid},

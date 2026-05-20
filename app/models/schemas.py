@@ -52,6 +52,8 @@ class MealAnalysisResponse(BaseModel):
     imbalances: list[str]
     suggestions: list[str]
     macros_ratios: dict
+    ml_label: Optional[str] = None
+    ml_confidence: Optional[float] = None
 
 
 class MealPlanRequest(BaseModel):

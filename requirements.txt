@@ -9,4 +9,6 @@ psycopg2-binary
 pymongo
 python-multipart
 numpy
+pandas
+scikit-learn
 python-jose[cryptography]
