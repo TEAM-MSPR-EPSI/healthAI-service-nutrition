@@ -1,6 +1,8 @@
-from fastapi import APIRouter
-from app.models.schemas import MealPlanRequest, MealPlanResponse, DayPlan, Meal, ObjectiveEnum, DietEnum
+from fastapi import APIRouter, Depends, HTTPException
+from app.models.schemas import MealPlanRequest, MealPlanResponse, DayPlan, Meal, UserProfile, ObjectiveEnum, DietEnum
 from app.db.mongo import save_meal_plan, get_meal_plan_history, get_meal_plans_by_user
+from app.db.postgres import get_user_full_profile
+from app.middleware.auth import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -83,6 +85,63 @@ _MEALS = {
     },
 }
 
+# Mots-clés par allergène — mappés sur les ingrédients des templates
+_ALLERGEN_KEYWORDS: dict[str, list[str]] = {
+    "gluten":   ["pain", "pâtes", "tortilla", "flocons d'avoine", "granola", "avoine", "semoule", "blé"],
+    "milk":     ["yaourt", "lait", "fromage", "beurre", "crème", "whey", "parmesan", "feta", "cottage cheese", "fromage blanc"],
+    "eggs":     ["œufs", "œuf"],
+    "nuts":     ["noix", "amandes", "noisettes", "beurre d'amande", "cajou", "pistaches"],
+    "peanuts":  ["cacahuète", "beurre de cacahuète", "arachide"],
+    "fish":     ["saumon", "thon", "cabillaud", "poisson"],
+}
+
+
+def _meal_contains_allergen(meal: dict, allergies: list[str]) -> bool:
+    foods_text = " ".join(meal.get("foods", [])).lower() + " " + meal.get("name", "").lower()
+    for allergy in allergies:
+        for keyword in _ALLERGEN_KEYWORDS.get(allergy.lower(), [allergy.lower()]):
+            if keyword in foods_text:
+                return True
+    return False
+
+
+# Ingrédients exclus par régime alimentaire
+_DIET_EXCLUDED_KEYWORDS: dict[str, list[str]] = {
+    "vegan": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+        "saumon", "thon", "cabillaud", "poisson", "saumon fumé",
+        "yaourt", "lait", "fromage", "beurre", "crème", "whey",
+        "parmesan", "feta", "cottage cheese", "fromage blanc",
+        "œufs", "œuf",
+    ],
+    "vegetarian": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+        "saumon", "thon", "cabillaud", "poisson", "saumon fumé",
+    ],
+    "pescatarian": [
+        "poulet", "bœuf", "dinde", "porc", "steak", "blanc de poulet", "cuisse de poulet",
+    ],
+    "gluten_free": [
+        "pain", "pâtes", "tortilla", "flocons d'avoine", "granola", "semoule",
+    ],
+    "lactose_free": [
+        "yaourt", "lait", "fromage", "beurre", "crème", "whey",
+        "parmesan", "feta", "cottage cheese", "fromage blanc",
+    ],
+    "halal":  ["porc", "jambon", "bacon", "lard"],
+    "kosher": ["porc", "jambon", "bacon", "lard"],
+    "none":   [],
+}
+
+
+def _is_meal_compatible(meal: dict, diet: str) -> bool:
+    excluded = _DIET_EXCLUDED_KEYWORDS.get(diet, [])
+    if not excluded:
+        return True
+    foods_text = " ".join(meal.get("foods", [])).lower() + " " + meal.get("name", "").lower()
+    return not any(kw in foods_text for kw in excluded)
+
+
 # Suggestions hebdomadaires selon le régime
 _WEEKLY_NOTES = {
     DietEnum.vegan: [
@@ -98,6 +157,22 @@ _WEEKLY_NOTES = {
         "Remplacer le blé par du riz, quinoa, sarrasin ou millet.",
         "Vérifier systématiquement les étiquettes : certains produits contiennent du gluten caché.",
     ],
+    DietEnum.pescatarian: [
+        "Varier les poissons : saumon, maquereau, sardines pour les oméga-3, cabillaud pour les protéines maigres.",
+        "Les fruits de mer sont une excellente source de zinc et d'iode.",
+    ],
+    DietEnum.lactose_free: [
+        "Remplacer les produits laitiers par des alternatives végétales enrichies en calcium (lait d'amande, soja, avoine).",
+        "Le calcium peut aussi être apporté par les légumes verts, les sardines et les amandes.",
+    ],
+    DietEnum.halal: [
+        "Vérifier que les viandes consommées sont certifiées halal.",
+        "Les protéines végétales (légumineuses, tofu) sont une alternative pratique en déplacement.",
+    ],
+    DietEnum.kosher: [
+        "Ne pas mélanger viande et produits laitiers dans le même repas.",
+        "Prévoir un délai entre un repas carné et un repas lacté.",
+    ],
     DietEnum.none: [],
 }
 
@@ -109,15 +184,29 @@ _GENERAL_NOTES = [
 
 
 @router.post("/generate", response_model=MealPlanResponse)
-async def generate_meal_plan(request: MealPlanRequest):
+async def generate_meal_plan(
+    request: MealPlanRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Génère un plan de repas personnalisé selon :
-    - L'objectif de l'utilisateur (perte de poids, prise de masse, endurance, maintien)
-    - Le régime alimentaire (vegan, végétarien, sans gluten)
-    - Le nombre de jours et de repas par jour
+    Génère un plan de repas pour l'utilisateur connecté.
+    Son profil santé, régime et allergies sont récupérés automatiquement depuis PostgreSQL.
     """
-    template = _MEALS.get(request.user_profile.objective, _MEALS[ObjectiveEnum.maintenance])
+    profile_data = get_user_full_profile(current_user["id"])
+    if not profile_data:
+        raise HTTPException(status_code=404, detail="Profil utilisateur introuvable en base de données.")
 
+    user_profile = UserProfile(
+        objective=profile_data["objective"],
+        gender=profile_data["gender"],
+        age=profile_data["age"],
+        weight_kg=profile_data["weight_kg"],
+        height_cm=profile_data["height_cm"],
+        diet=profile_data["diet"],
+        allergies=profile_data["allergies"],
+    )
+
+    template = _MEALS.get(user_profile.objective, _MEALS[ObjectiveEnum.maintenance])
     plan: list[DayPlan] = []
 
     for day_num in range(1, request.days + 1):
@@ -132,9 +221,13 @@ async def generate_meal_plan(request: MealPlanRequest):
             options = template.get(meal_type, [])
             if not options:
                 continue
-            # Rotation cyclique pour varier les repas d'un jour à l'autre
-            selected = options[(day_num - 1) % len(options)]
-
+            safe_options = [
+                m for m in options
+                if not _meal_contains_allergen(m, user_profile.allergies)
+                and _is_meal_compatible(m, user_profile.diet.value)
+            ]
+            pool = safe_options if safe_options else options
+            selected = pool[(day_num - 1) % len(pool)]
             meal = Meal(
                 name=selected["name"],
                 type=meal_type,
@@ -147,27 +240,42 @@ async def generate_meal_plan(request: MealPlanRequest):
 
         plan.append(DayPlan(day=day_num, meals=meals, total_calories=total_cal))
 
-    # Sauvegarde dans MongoDB avec référence à l'utilisateur PostgreSQL
-    save_meal_plan(request.user_id, request.user_profile.model_dump(), [d.model_dump() for d in plan])
+    save_meal_plan(current_user["id"], user_profile.model_dump(), [d.model_dump() for d in plan])
 
-    diet_notes = _WEEKLY_NOTES.get(request.user_profile.diet, [])
-    weekly_notes = _GENERAL_NOTES + diet_notes
+    diet_notes = _WEEKLY_NOTES.get(user_profile.diet, [])
+    allergy_notes = (
+        [f"Allergies détectées ({', '.join(user_profile.allergies)}) : les repas contenant ces allergènes ont été exclus du plan."]
+        if user_profile.allergies else []
+    )
+    weekly_notes = _GENERAL_NOTES + diet_notes + allergy_notes
 
     return MealPlanResponse(
-        user_id=request.user_id,
-        user_profile=request.user_profile,
+        user_id=current_user["id"],
+        user_profile=user_profile,
         plan=plan,
         weekly_notes=weekly_notes,
     )
 
 
 @router.get("/history")
-async def get_history(limit: int = 10):
-    """Récupère l'historique global des plans générés (tous utilisateurs)."""
+async def get_history(
+    limit: int = 10,
+    _: dict = Depends(require_admin),
+):
+    """Historique global de tous les plans générés. Réservé aux admins."""
     return get_meal_plan_history(limit=limit)
 
 
 @router.get("/user/{user_id}")
-async def get_user_plans(user_id: int, limit: int = 10):
-    """Récupère les plans de repas d'un utilisateur spécifique via son ID PostgreSQL."""
+async def get_user_plans(
+    user_id: int,
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retourne les plans de repas d'un utilisateur.
+    Un utilisateur ne peut consulter que ses propres plans.
+    """
+    if current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Accès refusé : vous ne pouvez consulter que vos propres plans.")
     return get_meal_plans_by_user(user_id=user_id, limit=limit)

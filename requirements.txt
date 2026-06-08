@@ -12,3 +12,6 @@ numpy
 httpx
 pytest
 pytest-cov
+pandas
+scikit-learn
+python-jose[cryptography]

@@ -14,7 +14,9 @@ class Settings:
     mongo_url: str = os.getenv("MONGO_URL", "mongodb://mongodb:27017")
     mongo_db: str = os.getenv("MONGO_DB", "healthai_nutrition")
 
-    hf_model_food: str = os.getenv("HF_MODEL_FOOD", "nateraw/food")
+    usda_api_key: str = os.getenv("USDA_API_KEY", "DEMO_KEY")
+
+    jwt_secret: str = os.getenv("JWT_SECRET", "")
 
     service_port: int = int(os.getenv("SERVICE_PORT", "8001"))
 

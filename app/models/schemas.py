@@ -13,7 +13,11 @@ class ObjectiveEnum(str, Enum):
 class DietEnum(str, Enum):
     vegan = "vegan"
     vegetarian = "vegetarian"
+    pescatarian = "pescatarian"
     gluten_free = "gluten_free"
+    lactose_free = "lactose_free"
+    halal = "halal"
+    kosher = "kosher"
     none = "none"
 
 
@@ -41,17 +45,18 @@ class FoodItem(BaseModel):
 class MealAnalysisResponse(BaseModel):
     detected_foods: list[FoodItem]
     total_calories: float
+    target_calories: Optional[float] = None
     total_protein_g: float
     total_carbs_g: float
     total_fat_g: float
     imbalances: list[str]
     suggestions: list[str]
     macros_ratios: dict
+    ml_label: Optional[str] = None
+    ml_confidence: Optional[float] = None
 
 
 class MealPlanRequest(BaseModel):
-    user_id: int  # ID de l'utilisateur dans PostgreSQL
-    user_profile: UserProfile
     days: int = 7
     meals_per_day: int = 3
 

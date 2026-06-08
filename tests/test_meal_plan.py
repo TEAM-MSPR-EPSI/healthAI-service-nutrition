@@ -14,6 +14,19 @@ def test_generate_meal_plan_builds_weekly_plan(monkeypatch) -> None:
         return "meal-plan-id"
 
     monkeypatch.setattr(meal_plan, "save_meal_plan", fake_save_meal_plan)
+    monkeypatch.setattr(
+        meal_plan,
+        "get_user_full_profile",
+        lambda _: {
+            "objective": ObjectiveEnum.muscle_gain,
+            "gender": "male",
+            "age": 30,
+            "weight_kg": 80.0,
+            "height_cm": 180.0,
+            "diet": DietEnum.vegan,
+            "allergies": [],
+        },
+    )
 
     request = MealPlanRequest(
         user_id=42,
@@ -26,7 +39,7 @@ def test_generate_meal_plan_builds_weekly_plan(monkeypatch) -> None:
         meals_per_day=4,
     )
 
-    response = asyncio.run(meal_plan.generate_meal_plan(request))
+    response = asyncio.run(meal_plan.generate_meal_plan(request, current_user={"id": 42}))
 
     assert response.user_id == 42
     assert len(response.plan) == 2
