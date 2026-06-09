@@ -59,6 +59,9 @@ class MealAnalysisResponse(BaseModel):
 class MealPlanRequest(BaseModel):
     days: int = 7
     meals_per_day: int = 3
+    objective: Optional[str] = None
+    diet: Optional[str] = None
+    allergies: Optional[list[str]] = None
 
 
 class Meal(BaseModel):
