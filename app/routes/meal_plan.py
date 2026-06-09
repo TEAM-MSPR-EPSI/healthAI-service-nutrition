@@ -183,6 +183,15 @@ _GENERAL_NOTES = [
 ]
 
 
+@router.get("/profile")
+async def get_my_profile(current_user: dict = Depends(get_current_user)):
+    """Retourne le profil nutritionnel de l'utilisateur connecté (pour pré-remplir le formulaire)."""
+    profile_data = get_user_full_profile(current_user["id"])
+    if not profile_data:
+        raise HTTPException(status_code=404, detail="Profil utilisateur introuvable en base de données.")
+    return profile_data
+
+
 @router.post("/generate", response_model=MealPlanResponse)
 async def generate_meal_plan(
     request: MealPlanRequest,
@@ -196,14 +205,26 @@ async def generate_meal_plan(
     if not profile_data:
         raise HTTPException(status_code=404, detail="Profil utilisateur introuvable en base de données.")
 
+    # Normalise les valeurs frontend vers les enums backend
+    _OBJ_MAP  = {"energy": "endurance", "health": "maintenance"}
+    _DIET_MAP = {"standard": "none", "keto": "none", "mediterranean": "none"}
+
+    objective_str = request.objective or profile_data["objective"]
+    objective_str = _OBJ_MAP.get(objective_str, objective_str)
+
+    diet_str = request.diet or profile_data["diet"]
+    diet_str = _DIET_MAP.get(diet_str, diet_str)
+
+    allergies = request.allergies if request.allergies is not None else profile_data["allergies"]
+
     user_profile = UserProfile(
-        objective=profile_data["objective"],
+        objective=objective_str,
         gender=profile_data["gender"],
         age=profile_data["age"],
         weight_kg=profile_data["weight_kg"],
         height_cm=profile_data["height_cm"],
-        diet=profile_data["diet"],
-        allergies=profile_data["allergies"],
+        diet=diet_str,
+        allergies=allergies,
     )
 
     template = _MEALS.get(user_profile.objective, _MEALS[ObjectiveEnum.maintenance])
