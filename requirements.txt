@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pillow
+requests
+transformers
+sqlalchemy
+psycopg2-binary
+pymongo
+python-multipart
+numpy
+httpx
+pytest
+pytest-cov
+pandas
+scikit-learn
+python-jose[cryptography]

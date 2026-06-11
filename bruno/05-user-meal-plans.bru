@@ -1,0 +1,15 @@
+meta {
+  name: Plans d'un utilisateur (son propre user_id)
+  type: http
+  seq: 5
+}
+
+get {
+  url: http://localhost:8001/api/meal-plan/user/2
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: COLLER_LE_TOKEN_JWT_ICI
+}
